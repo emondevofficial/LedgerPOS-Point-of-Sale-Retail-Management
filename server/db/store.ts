@@ -47,17 +47,31 @@ function emptyLocalStore(): LocalStoreData {
 }
 
 let useMongo = false;
+let lastDbError: string | null = null;
 let localStore: LocalStoreData = emptyLocalStore();
 let localWriteLock: Promise<void> = Promise.resolve();
 let activeLocalSnapshot: LocalStoreData | null = null;
 let customDbFilePath: string | null = null;
+let localInitializedForPath: string | null = null;
+
+type GlobalMongoCache = {
+  promise: Promise<'mongodb' | 'local'> | null;
+};
+
+const globalForMongo = globalThis as typeof globalThis & { __ledgerPosMongoCache?: GlobalMongoCache };
+if (!globalForMongo.__ledgerPosMongoCache) {
+  globalForMongo.__ledgerPosMongoCache = { promise: null };
+}
+const mongoCache = globalForMongo.__ledgerPosMongoCache;
 
 export function setLocalDbPathForTests(filePath: string | null) {
   customDbFilePath = filePath;
+  localInitializedForPath = null;
   localStore = emptyLocalStore();
   if (filePath && fs.existsSync(filePath)) {
     const raw = fs.readFileSync(filePath, 'utf-8');
     localStore = { ...emptyLocalStore(), ...JSON.parse(raw) };
+    localInitializedForPath = filePath;
   }
 }
 
@@ -96,29 +110,81 @@ function persistLocalStoreSync() {
   fs.renameSync(tmpPath, filePath);
 }
 
+mongoose.set('bufferCommands', false);
+
 export async function connectDatabase(): Promise<{ mode: 'mongodb' | 'local' }> {
   if (env.MONGODB_URI) {
-    try {
-      await mongoose.connect(env.MONGODB_URI, {
-        serverSelectionTimeoutMS: 8000,
-      });
+    if (mongoose.connection.readyState === 1) {
       useMongo = true;
-      console.log('[DB] Connected to MongoDB via Mongoose');
+      lastDbError = null;
       return { mode: 'mongodb' };
-    } catch (error) {
-      console.error('[DB] Failed to connect to MongoDB:', error);
-      throw error;
     }
+
+    if (!mongoCache.promise) {
+      mongoCache.promise = mongoose
+        .connect(env.MONGODB_URI, {
+          serverSelectionTimeoutMS: 8000,
+          maxPoolSize: env.IS_VERCEL ? 5 : 10,
+        })
+        .then(() => {
+          useMongo = true;
+          lastDbError = null;
+          console.log('[DB] Connected to MongoDB via Mongoose');
+          return 'mongodb' as const;
+        })
+        .catch((error: any) => {
+          mongoCache.promise = null;
+          const msg = error?.message || 'MongoDB connection failed';
+          lastDbError = msg;
+          throw error;
+        });
+    }
+
+    try {
+      const mode = await mongoCache.promise;
+      return { mode };
+    } catch (error: any) {
+      if (env.IS_VERCEL) {
+        console.error('[DB] MongoDB connection failed in Vercel environment:', error?.message || error);
+        const dbErr: any = new Error(
+          'Unable to connect to the production MongoDB database. Please verify MONGODB_URI and Atlas network access settings.'
+        );
+        dbErr.status = 503;
+        throw dbErr;
+      }
+      console.warn('[DB] Failed to connect to MongoDB — falling back to local store:', error?.message || error);
+    }
+  } else if (env.IS_VERCEL) {
+    lastDbError = 'MONGODB_URI environment variable is not configured';
+    const dbErr: any = new Error(
+      'Production database is not configured. Please set the MONGODB_URI environment variable in Vercel.'
+    );
+    dbErr.status = 503;
+    throw dbErr;
   }
 
   useMongo = false;
-  loadLocalStore();
-  console.log(`[DB] MONGODB_URI not set — using persistent local store at ${getDbFilePath()}`);
+  lastDbError = null;
+  const targetPath = getDbFilePath();
+  if (localInitializedForPath !== targetPath) {
+    loadLocalStore();
+    localInitializedForPath = targetPath;
+    console.log(`[DB] Using persistent local store at ${targetPath}`);
+  }
   return { mode: 'local' };
 }
 
 export function getDatabaseMode(): 'mongodb' | 'local' {
   return useMongo ? 'mongodb' : 'local';
+}
+
+export function getDatabaseStatus() {
+  return {
+    mode: getDatabaseMode(),
+    connected: useMongo ? mongoose.connection.readyState === 1 : !env.IS_VERCEL,
+    hasMongoUri: Boolean(env.MONGODB_URI),
+    error: lastDbError,
+  };
 }
 
 export function generateId(): string {

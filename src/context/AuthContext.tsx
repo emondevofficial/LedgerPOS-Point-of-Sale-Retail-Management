@@ -6,6 +6,7 @@ interface AuthContextValue {
   loading: boolean;
   initialized: boolean;
   requiresBootstrapCode: boolean;
+  authError: string | null;
   user: AuthUser | null;
   settings: StoreSettingsDTO;
   dbMode: 'mongodb' | 'local';
@@ -53,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(true);
   const [requiresBootstrapCode, setRequiresBootstrapCode] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [settings, setSettings] = useState<StoreSettingsDTO>(DEFAULT_SETTINGS);
   const [dbMode, setDbMode] = useState<'mongodb' | 'local'>('local');
@@ -86,6 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshAuth = useCallback(async () => {
+    setLoading(true);
     try {
       const status = await apiRequest<{
         initialized: boolean;
@@ -96,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         dbMode: 'mongodb' | 'local';
       }>('/api/auth/status');
 
+      setAuthError(null);
       setInitialized(status.initialized);
       setRequiresBootstrapCode(status.requiresBootstrapCode);
       setUser(status.user);
@@ -111,6 +115,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // ignore
         }
       }
+    } catch (err: any) {
+      setAuthError(err?.message || 'Unable to connect to the backend authentication service.');
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -132,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const completeSession = useCallback(
     async (userData: AuthUser, token?: string) => {
       if (token) setSessionToken(token);
+      setAuthError(null);
       setInitialized(true);
       setUser(userData);
       setLoading(false);
@@ -155,6 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         initialized,
         requiresBootstrapCode,
+        authError,
         user,
         settings,
         dbMode,

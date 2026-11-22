@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Lock, Moon, Sun } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Lock, Moon, RefreshCw, Sun } from 'lucide-react';
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { Button, Input, Select } from '../components/ui/Primitives';
@@ -18,10 +18,11 @@ const CURRENCIES = [
 ];
 
 export function AuthView() {
-  const { initialized, requiresBootstrapCode, settings, theme, toggleTheme, completeSession } = useAuth();
+  const { initialized, requiresBootstrapCode, authError, settings, theme, toggleTheme, completeSession, refreshAuth } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const [showPass, setShowPass] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Setup state
   const [setupName, setSetupName] = useState('');
@@ -40,6 +41,7 @@ export function AuthView() {
 
   const handleSetup = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     setSubmitting(true);
     try {
       const currObj = CURRENCIES.find((c) => c.code === currency) || CURRENCIES[0];
@@ -59,7 +61,9 @@ export function AuthView() {
       toast.success('Store initialized and Super Admin account created');
       await completeSession(res.user, res.token);
     } catch (err: any) {
-      toast.error(err.message || 'Setup failed');
+      const msg = err.message || 'Setup failed';
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -67,6 +71,7 @@ export function AuthView() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     setSubmitting(true);
     try {
       const res = await apiRequest<{ user: any; token?: string }>('/api/auth/login', {
@@ -76,7 +81,9 @@ export function AuthView() {
       toast.success('Signed in successfully');
       await completeSession(res.user, res.token);
     } catch (err: any) {
-      toast.error(err.message || 'Sign in failed');
+      const msg = err.message || 'Sign in failed';
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -84,6 +91,7 @@ export function AuthView() {
 
   const handleForgot = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     setSubmitting(true);
     try {
       await apiRequest('/api/auth/forgot-password', {
@@ -93,7 +101,9 @@ export function AuthView() {
       toast.success('Reset request processed. Enter your reset token below.');
       setMode('reset');
     } catch (err: any) {
-      toast.error(err.message || 'Request failed');
+      const msg = err.message || 'Request failed';
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -101,6 +111,7 @@ export function AuthView() {
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     setSubmitting(true);
     try {
       await apiRequest('/api/auth/reset-password', {
@@ -111,7 +122,9 @@ export function AuthView() {
       setMode('login');
       setPassword('');
     } catch (err: any) {
-      toast.error(err.message || 'Reset failed');
+      const msg = err.message || 'Reset failed';
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -143,6 +156,33 @@ export function AuthView() {
 
       <main className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-8 shadow-sm">
+          {authError && (
+            <div className="mb-4 rounded-lg border border-rose-200 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-950/30 p-3 text-xs text-rose-700 dark:text-rose-300">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium">Connection Error</p>
+                  <p className="mt-0.5 text-rose-600 dark:text-rose-300/90">{authError}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void refreshAuth()}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-rose-300 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-700 dark:text-rose-200 font-medium hover:bg-rose-50 cursor-pointer shrink-0"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Retry
+                </button>
+              </div>
+            </div>
+          )}
+
+          {formError && (
+            <div className="mb-4 rounded-lg border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{formError}</span>
+            </div>
+          )}
+
           {!initialized ? (
             <form onSubmit={handleSetup} className="space-y-4">
               <div>

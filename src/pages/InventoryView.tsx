@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import {
   Button,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   Select,
@@ -24,6 +25,7 @@ export function InventoryView() {
   const [products, setProducts] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [movementType, setMovementType] = useState('all');
 
@@ -38,6 +40,7 @@ export function InventoryView() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [prodRes, movRes] = await Promise.all([
         apiRequest<{ rows: any[] }>(`/api/products?search=${encodeURIComponent(search)}&limit=400`),
@@ -48,7 +51,9 @@ export function InventoryView() {
       setProducts(prodRes.rows || []);
       setMovements(movRes.rows || []);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load inventory');
+      const msg = err.message || 'Failed to load inventory';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -170,6 +175,8 @@ export function InventoryView() {
 
       {loading ? (
         <TableSkeleton rows={6} cols={6} />
+      ) : loadError ? (
+        <ErrorState title="Failed to load inventory" message={loadError} onRetry={loadData} />
       ) : tab === 'stock' ? (
         products.length === 0 ? (
           <EmptyState title="No inventory items" description="Add products in Catalog to start tracking stock." />

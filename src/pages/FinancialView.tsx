@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
-import { EmptyState, StatCard, TableSkeleton } from '../components/ui/Primitives';
+import { EmptyState, ErrorState, StatCard, TableSkeleton } from '../components/ui/Primitives';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest, cn, formatMoney } from '../lib/api';
 
@@ -19,15 +19,19 @@ export function FinancialView() {
   const sym = settings.currencySymbol || '$';
   const [preset, setPreset] = useState('30d');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await apiRequest(`/api/financial?preset=${preset}`);
       setData(res);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load financial overview');
+      const msg = err.message || 'Failed to load financial overview';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -37,8 +41,18 @@ export function FinancialView() {
     load();
   }, [load]);
 
-  if (loading || !data) {
+  if (loading) {
     return <TableSkeleton rows={6} cols={4} />;
+  }
+
+  if (loadError || !data) {
+    return (
+      <ErrorState
+        title="Failed to load financial overview"
+        message={loadError || 'Unable to fetch financial statements from the server.'}
+        onRetry={load}
+      />
+    );
   }
 
   const s = data.summary;

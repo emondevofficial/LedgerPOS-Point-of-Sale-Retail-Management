@@ -5,6 +5,7 @@ import { SINGLE_PAYMENT_METHODS } from '../../shared/types';
 import {
   Button,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   Select,
@@ -23,6 +24,7 @@ export function ReturnsView() {
   const [sales, setSales] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState('all');
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -36,6 +38,7 @@ export function ReturnsView() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [retRes, salesRes, poRes] = await Promise.all([
         apiRequest<any[]>(`/api/returns?type=${typeFilter}`),
@@ -46,7 +49,9 @@ export function ReturnsView() {
       setSales((salesRes.rows || []).filter((s) => s.status !== 'canceled' && s.status !== 'refunded'));
       setPurchases(poRes.filter((p) => p.status === 'received' || p.status === 'partial_received'));
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load returns');
+      const msg = err.message || 'Failed to load returns';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -136,6 +141,8 @@ export function ReturnsView() {
 
       {loading ? (
         <TableSkeleton rows={5} cols={7} />
+      ) : loadError ? (
+        <ErrorState title="Failed to load returns" message={loadError} onRetry={loadData} />
       ) : returns.length === 0 ? (
         <EmptyState
           title="No returns recorded"

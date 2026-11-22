@@ -1,4 +1,4 @@
-import { AlertTriangle, Package, X } from 'lucide-react';
+import { AlertTriangle, Package, RefreshCw, X } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { cn } from '../../lib/api';
 
@@ -280,6 +280,31 @@ export function EmptyState({
       {actionLabel && onAction && (
         <Button size="sm" className="mt-4" onClick={onAction}>
           {actionLabel}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+export function ErrorState({
+  title = 'Unable to load data',
+  message,
+  onRetry,
+}: {
+  title?: string;
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 px-4 text-center border border-rose-200 dark:border-rose-900/60 rounded-xl bg-rose-50/60 dark:bg-rose-950/20">
+      <div className="p-2.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 mb-3">
+        <AlertTriangle className="w-5 h-5" />
+      </div>
+      <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h4>
+      <p className="text-xs text-slate-600 dark:text-slate-300 max-w-md mt-1">{message}</p>
+      {onRetry && (
+        <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
+          <RefreshCw className="w-3.5 h-3.5" /> Retry
         </Button>
       )}
     </div>

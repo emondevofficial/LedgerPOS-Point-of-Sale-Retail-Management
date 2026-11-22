@@ -16,6 +16,7 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   Select,
@@ -42,6 +43,7 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
   const [logs, setLogs] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // User Modal
   const [userModalOpen, setUserModalOpen] = useState(false);
@@ -78,6 +80,7 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
 
   const loadTabData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       if (tab === 'users' && can('users:manage')) {
         const [u, r] = await Promise.all([apiRequest<any[]>('/api/users'), apiRequest<any[]>('/api/roles')]);
@@ -94,7 +97,9 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
         setLogs(res.rows || []);
       }
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load data');
+      const msg = err.message || 'Failed to load data';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -270,6 +275,8 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
           </div>
           {loading ? (
             <TableSkeleton rows={4} cols={5} />
+          ) : loadError ? (
+            <ErrorState title="Failed to load staff accounts" message={loadError} onRetry={loadTabData} />
           ) : (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
@@ -360,7 +367,12 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
               <Plus className="w-3.5 h-3.5" /> New Custom Role
             </Button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {loading ? (
+            <TableSkeleton rows={4} cols={3} />
+          ) : loadError ? (
+            <ErrorState title="Failed to load roles" message={loadError} onRetry={loadTabData} />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {roles.map((r) => (
               <div key={r._id} className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-3">
                 <div>
@@ -387,7 +399,8 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -506,8 +519,13 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
                 variant="outline"
                 size="sm"
                 onClick={async () => {
-                  await apiRequest('/api/notifications/read-all', { method: 'PUT' });
-                  loadTabData();
+                  try {
+                    await apiRequest('/api/notifications/read-all', { method: 'PUT' });
+                    toast.success('All notifications marked as read');
+                    await loadTabData();
+                  } catch (err: any) {
+                    toast.error(err.message || 'Could not update notifications');
+                  }
                 }}
               >
                 <CheckCheck className="w-3.5 h-3.5" /> Mark All Read
@@ -517,8 +535,13 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
                   variant="outline"
                   size="sm"
                   onClick={async () => {
-                    await apiRequest('/api/notifications', { method: 'DELETE' });
-                    loadTabData();
+                    try {
+                      await apiRequest('/api/notifications', { method: 'DELETE' });
+                      toast.success('Notifications cleared');
+                      await loadTabData();
+                    } catch (err: any) {
+                      toast.error(err.message || 'Could not clear notifications');
+                    }
                   }}
                 >
                   Clear All
@@ -526,7 +549,11 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
               )}
             </div>
           </div>
-          {notifications.length === 0 ? (
+          {loading ? (
+            <TableSkeleton rows={4} cols={3} />
+          ) : loadError ? (
+            <ErrorState title="Failed to load notifications" message={loadError} onRetry={loadTabData} />
+          ) : notifications.length === 0 ? (
             <EmptyState title="No notifications" description="Alerts for low stock, out-of-stock SKUs, sales, and received POs appear here." />
           ) : (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800">
@@ -542,8 +569,12 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
                       variant="ghost"
                       size="sm"
                       onClick={async () => {
-                        await apiRequest(`/api/notifications/${n._id}/read`, { method: 'PUT' });
-                        loadTabData();
+                        try {
+                          await apiRequest(`/api/notifications/${n._id}/read`, { method: 'PUT' });
+                          await loadTabData();
+                        } catch (err: any) {
+                          toast.error(err.message || 'Could not mark notification as read');
+                        }
                       }}
                     >
                       Mark Read
@@ -571,6 +602,8 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
           </div>
           {loading ? (
             <TableSkeleton rows={6} cols={5} />
+          ) : loadError ? (
+            <ErrorState title="Failed to load activity logs" message={loadError} onRetry={loadTabData} />
           ) : logs.length === 0 ? (
             <EmptyState title="No activity logs" description="Operational and authentication audit events appear here." />
           ) : (
@@ -697,10 +730,14 @@ export function AdminView({ initialTab = 'profile' }: { initialTab?: AdminTab })
         open={Boolean(deleteUserTarget)}
         onClose={() => setDeleteUserTarget(null)}
         onConfirm={async () => {
-          await apiRequest(`/api/users/${deleteUserTarget._id}`, { method: 'DELETE' });
-          toast.success('User deleted');
-          setDeleteUserTarget(null);
-          await loadTabData();
+          try {
+            await apiRequest(`/api/users/${deleteUserTarget._id}`, { method: 'DELETE' });
+            toast.success('User deleted');
+            setDeleteUserTarget(null);
+            await loadTabData();
+          } catch (err: any) {
+            toast.error(err.message || 'Delete failed');
+          }
         }}
         title="Delete Staff User"
         message={`Deactivate and remove "${deleteUserTarget?.name}" (${deleteUserTarget?.email})?`}

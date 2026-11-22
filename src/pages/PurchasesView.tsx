@@ -6,6 +6,7 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   Select,
@@ -25,6 +26,7 @@ export function PurchasesView() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -49,6 +51,7 @@ export function PurchasesView() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const qs = new URLSearchParams({ search, status: statusFilter });
       const [poRes, supRes, prodRes] = await Promise.all([
@@ -60,7 +63,9 @@ export function PurchasesView() {
       setSuppliers(supRes);
       setProducts(prodRes.rows || []);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load purchases');
+      const msg = err.message || 'Failed to load purchases';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -195,6 +200,8 @@ export function PurchasesView() {
 
       {loading ? (
         <TableSkeleton rows={5} cols={7} />
+      ) : loadError ? (
+        <ErrorState title="Failed to load purchase orders" message={loadError} onRetry={loadData} />
       ) : purchases.length === 0 ? (
         <EmptyState
           title="No purchase orders"
@@ -233,8 +240,12 @@ export function PurchasesView() {
                         variant="ghost"
                         size="sm"
                         onClick={async () => {
-                          const d = await apiRequest<{ purchase: any; items: any[] }>(`/api/purchases/${po._id}`);
-                          setDetailData(d);
+                          try {
+                            const d = await apiRequest<{ purchase: any; items: any[] }>(`/api/purchases/${po._id}`);
+                            setDetailData(d);
+                          } catch (err: any) {
+                            toast.error(err.message || 'Could not load purchase order details');
+                          }
                         }}
                       >
                         <Eye className="w-3.5 h-3.5" /> View

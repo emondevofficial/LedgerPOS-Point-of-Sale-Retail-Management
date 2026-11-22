@@ -1,7 +1,7 @@
 import { Download, FileSpreadsheet, Printer, Search } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Button, EmptyState, Select, TableSkeleton } from '../components/ui/Primitives';
+import { Button, EmptyState, ErrorState, Select, TableSkeleton } from '../components/ui/Primitives';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest, downloadCsv } from '../lib/api';
 import { generateReportPdf } from '../lib/pdf';
@@ -43,9 +43,11 @@ export function ReportsView() {
 
   const [rows, setRows] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const qs = new URLSearchParams({ preset });
       if (preset === 'custom' && startDate) qs.set('start', startDate);
@@ -55,7 +57,9 @@ export function ReportsView() {
       setPage(1);
       setSortCol('');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to generate report');
+      const msg = err.message || 'Failed to generate report';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -170,6 +174,8 @@ export function ReportsView() {
       {/* Report Table */}
       {loading ? (
         <TableSkeleton rows={8} cols={5} />
+      ) : loadError ? (
+        <ErrorState title="Failed to generate report" message={loadError} onRetry={loadReport} />
       ) : filteredAndSorted.length === 0 ? (
         <EmptyState title="No report records" description="No database records match the selected report and date filter." />
       ) : (

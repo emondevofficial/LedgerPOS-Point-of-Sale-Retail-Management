@@ -19,6 +19,13 @@ export class ApiError extends Error {
   }
 }
 
+const API_BASE = ((import.meta as any)?.env?.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+
+function resolveApiUrl(url: string): string {
+  if (/^https?:\/\//i.test(url) || !API_BASE) return url;
+  return `${API_BASE}${url.startsWith('/') ? url : `/${url}`}`;
+}
+
 export async function apiRequest<T = any>(
   url: string,
   options: RequestInit = {}
@@ -32,21 +39,58 @@ export async function apiRequest<T = any>(
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
+  const controller = new AbortController();
+  const externalSignal = options.signal;
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
+  const timeoutId = setTimeout(() => controller.abort(), 25_000);
 
-  const contentType = res.headers.get('content-type') || '';
+  let res: Response;
+  try {
+    res = await fetch(resolveApiUrl(url), {
+      ...options,
+      headers,
+      credentials: 'include',
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new ApiError('Request timed out. Please check your connection and try again.', 408);
+    }
+    throw new ApiError('Unable to reach the server. Please verify your network connection.', 0);
+  } finally {
+    clearTimeout(timeoutId);
+    if (externalSignal) {
+      externalSignal.removeEventListener('abort', onExternalAbort);
+    }
+  }
+
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
   if (!contentType.includes('application/json')) {
-    if (!res.ok) throw new ApiError(`Request failed (${res.status})`, res.status);
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new ApiError('API endpoint not found (404). Please verify backend deployment configuration.', 404);
+      }
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        throw new ApiError('Server or database is temporarily unavailable. Please try again in a moment.', res.status);
+      }
+      throw new ApiError(`Request failed (${res.status})`, res.status);
+    }
     return (await res.text()) as unknown as T;
   }
 
-  const json = await res.json();
-  if (!res.ok || json.success === false) {
-    throw new ApiError(json.error || `Request failed (${res.status})`, res.status);
+  let json: any;
+  try {
+    json = await res.json();
+  } catch {
+    throw new ApiError(`Invalid JSON response from server (${res.status})`, res.status);
+  }
+
+  if (!res.ok || json?.success === false) {
+    throw new ApiError(json?.error || `Request failed (${res.status})`, res.status);
   }
   return json.data as T;
 }

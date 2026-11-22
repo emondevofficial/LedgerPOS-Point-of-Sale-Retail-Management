@@ -388,19 +388,20 @@ router.get('/notifications', requireAuth, requirePermission('notifications:view'
   }
 });
 
-router.put('/notifications/:id/read', requireAuth, requirePermission('notifications:view'), async (req, res, next) => {
+router.put('/notifications/read-all', requireAuth, requirePermission('notifications:view'), async (_req, res, next) => {
   try {
-    const updated = await db.notifications.updateById(req.params.id, { $set: { isRead: true } });
-    res.json({ success: true, data: updated });
+    await db.notifications.updateMany({ isRead: false }, { $set: { isRead: true } });
+    res.json({ success: true, message: 'All notifications marked as read' });
   } catch (err) {
     next(err);
   }
 });
 
-router.put('/notifications/read-all', requireAuth, requirePermission('notifications:view'), async (_req, res, next) => {
+router.put('/notifications/:id/read', requireAuth, requirePermission('notifications:view'), async (req, res, next) => {
   try {
-    await db.notifications.updateMany({ isRead: false }, { $set: { isRead: true } });
-    res.json({ success: true, message: 'All notifications marked as read' });
+    const updated = await db.notifications.updateById(req.params.id, { $set: { isRead: true } });
+    if (!updated) return res.status(404).json({ success: false, error: 'Notification not found' });
+    res.json({ success: true, data: updated });
   } catch (err) {
     next(err);
   }

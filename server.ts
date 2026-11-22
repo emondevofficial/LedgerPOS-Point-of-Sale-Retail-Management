@@ -2,9 +2,8 @@ import cookieParser from 'cookie-parser';
 import express, { NextFunction, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { env } from './server/config/env';
-import { connectDatabase } from './server/db/store';
+import { connectDatabase, getDatabaseStatus } from './server/db/store';
 import adminRoutes from './server/routes/adminRoutes';
 import authRoutes from './server/routes/authRoutes';
 import catalogRoutes from './server/routes/catalogRoutes';
@@ -19,15 +18,68 @@ export async function createApp() {
   app.use(express.urlencoded({ extended: true, limit: '5mb' }));
   app.use(cookieParser());
 
-  // Security headers
-  app.use((_req, res, next) => {
+  // Security & safe CORS headers
+  const allowedOrigins = new Set(
+    [env.APP_URL, env.CORS_ORIGIN]
+      .flatMap((v) => v.split(','))
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+
+  app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.has(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
+      res.setHeader('Vary', 'Origin');
+    }
+
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
     next();
   });
 
-  app.get('/api/health', (_req, res) => {
-    res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });
+  app.get('/api/health', async (_req, res) => {
+    try {
+      await connectDatabase();
+      const dbStatus = getDatabaseStatus();
+      res.json({
+        success: true,
+        status: 'ok',
+        db: { mode: dbStatus.mode, connected: dbStatus.connected },
+        sessionConfigured: env.HAS_EXPLICIT_SESSION_SECRET || !env.IS_VERCEL,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      const dbStatus = getDatabaseStatus();
+      res.status(err?.status === 503 ? 503 : 500).json({
+        success: false,
+        status: 'degraded',
+        error: err?.message || 'Database connection unavailable',
+        db: {
+          mode: dbStatus.mode,
+          connected: false,
+          hasMongoUri: dbStatus.hasMongoUri,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
+  // Ensure database is connected before handling any API route (critical for serverless cold starts)
+  app.use('/api', async (_req, _res, next) => {
+    try {
+      await connectDatabase();
+      next();
+    } catch (err) {
+      next(err);
+    }
   });
 
   app.use('/api/auth', authRoutes);
@@ -46,7 +98,7 @@ export async function createApp() {
     console.error('[API Error]', err?.message || err);
     const status = typeof err?.status === 'number' ? err.status : 500;
     const message =
-      status < 500
+      status < 500 || status === 503
         ? err?.message || 'Request error'
         : env.NODE_ENV === 'production'
         ? 'An internal server error occurred'
@@ -62,6 +114,7 @@ async function startServer() {
   const app = await createApp();
 
   if (env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -82,7 +135,7 @@ async function startServer() {
   });
 }
 
-// Start server only when executed directly (allows unit/integration tests to import createApp)
+// Start server only when executed directly (allows unit/integration tests and serverless entrypoints to import createApp)
 const isDirectRun =
   process.argv[1] && (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.js'));
 
@@ -92,3 +145,4 @@ if (isDirectRun) {
     process.exit(1);
   });
 }
+

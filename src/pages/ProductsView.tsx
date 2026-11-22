@@ -15,6 +15,7 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   ProductImage,
@@ -35,6 +36,7 @@ export function ProductsView() {
 
   const [tab, setTab] = useState<SubTab>('products');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -90,6 +92,7 @@ export function ProductsView() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const qs = new URLSearchParams({
         search,
@@ -111,7 +114,9 @@ export function ProductsView() {
       setBrands(brandRes);
       setSuppliers(supRes);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load catalog');
+      const msg = err.message || 'Failed to load catalog';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -453,6 +458,8 @@ export function ProductsView() {
 
           {loading ? (
             <TableSkeleton rows={6} cols={7} />
+          ) : loadError ? (
+            <ErrorState title="Failed to load catalog" message={loadError} onRetry={loadAll} />
           ) : products.length === 0 ? (
             <EmptyState
               title="No products found"
@@ -616,7 +623,11 @@ export function ProductsView() {
 
       {tab === 'categories' && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
-          {categories.length === 0 ? (
+          {loading ? (
+            <TableSkeleton rows={5} cols={4} />
+          ) : loadError ? (
+            <ErrorState title="Failed to load categories" message={loadError} onRetry={loadAll} />
+          ) : categories.length === 0 ? (
             <EmptyState
               title="No categories created"
               description="Organize your catalog by adding product categories."
@@ -675,7 +686,11 @@ export function ProductsView() {
 
       {tab === 'brands' && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
-          {brands.length === 0 ? (
+          {loading ? (
+            <TableSkeleton rows={5} cols={4} />
+          ) : loadError ? (
+            <ErrorState title="Failed to load brands" message={loadError} onRetry={loadAll} />
+          ) : brands.length === 0 ? (
             <EmptyState
               title="No brands created"
               description="Add manufacturer or house brands to track product lines."

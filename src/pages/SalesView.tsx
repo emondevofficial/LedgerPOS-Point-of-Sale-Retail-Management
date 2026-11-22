@@ -6,6 +6,7 @@ import { InvoiceModal } from '../components/InvoiceModal';
 import {
   Button,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   Select,
@@ -23,6 +24,7 @@ export function SalesView() {
 
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('all');
   const [status, setStatus] = useState('all');
@@ -35,6 +37,7 @@ export function SalesView() {
 
   const loadSales = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const qs = new URLSearchParams({
         search,
@@ -47,7 +50,9 @@ export function SalesView() {
       const res = await apiRequest<{ rows: any[] }>(`/api/sales?${qs.toString()}`);
       setSales(res.rows || []);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load sales');
+      const msg = err.message || 'Failed to load sales';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -152,6 +157,8 @@ export function SalesView() {
 
       {loading ? (
         <TableSkeleton rows={6} cols={8} />
+      ) : loadError ? (
+        <ErrorState title="Failed to load sales history" message={loadError} onRetry={loadSales} />
       ) : sales.length === 0 ? (
         <EmptyState title="No sales found" description="Completed POS checkouts will appear here with printable invoices." />
       ) : (

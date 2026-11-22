@@ -15,7 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
-import { Button, EmptyState, StatCard, StatusText, TableSkeleton } from '../components/ui/Primitives';
+import { Button, EmptyState, ErrorState, StatCard, StatusText, TableSkeleton } from '../components/ui/Primitives';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest, cn, formatDateTime, formatMoney } from '../lib/api';
 
@@ -39,11 +39,13 @@ export function DashboardView({ onNavigate }: { onNavigate: (tab: string) => voi
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [data, setData] = useState<any>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const qs = new URLSearchParams({ preset });
       if (preset === 'custom' && startDate) qs.set('start', startDate);
@@ -51,7 +53,9 @@ export function DashboardView({ onNavigate }: { onNavigate: (tab: string) => voi
       const res = await apiRequest(`/api/dashboard?${qs.toString()}`);
       setData(res);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load dashboard metrics');
+      const msg = err.message || 'Failed to load dashboard metrics';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -150,7 +154,7 @@ export function DashboardView({ onNavigate }: { onNavigate: (tab: string) => voi
         </div>
       </div>
 
-      {loading || !data ? (
+      {loading ? (
         <div className="space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
             {Array.from({ length: 11 }).map((_, idx) => (
@@ -159,6 +163,12 @@ export function DashboardView({ onNavigate }: { onNavigate: (tab: string) => voi
           </div>
           <TableSkeleton rows={5} cols={5} />
         </div>
+      ) : loadError || !data ? (
+        <ErrorState
+          title="Failed to load dashboard metrics"
+          message={loadError || 'Unable to fetch dashboard data from the server.'}
+          onRetry={loadDashboard}
+        />
       ) : (
         <>
           {data.kpis.totalProducts === 0 && data.kpis.totalOrders === 0 && (

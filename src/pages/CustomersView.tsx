@@ -6,6 +6,7 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   Select,
@@ -23,6 +24,7 @@ export function CustomersView() {
 
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
@@ -46,12 +48,15 @@ export function CustomersView() {
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const qs = new URLSearchParams({ search, type: typeFilter });
       const res = await apiRequest<any[]>(`/api/customers?${qs.toString()}`);
       setCustomers(res);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load customers');
+      const msg = err.message || 'Failed to load customers';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -172,6 +177,8 @@ export function CustomersView() {
 
       {loading ? (
         <TableSkeleton rows={6} cols={6} />
+      ) : loadError ? (
+        <ErrorState title="Failed to load customers" message={loadError} onRetry={loadCustomers} />
       ) : customers.length === 0 ? (
         <EmptyState
           title="No customers found"

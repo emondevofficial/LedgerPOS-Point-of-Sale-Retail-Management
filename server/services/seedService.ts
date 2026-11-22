@@ -594,7 +594,7 @@ export async function seedOptionalDemoData(actor: { _id: string; name: string; r
         ? grandTotal
         : roundMoney(grandTotal * sb.paidRatio);
     const dueAmount = roundMoney(Math.max(0, grandTotal - paidAmount));
-    const paymentStatus = dueAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'due';
+    const paymentStatus = dueAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
 
     const sale = await db.sales.create({
       invoiceNumber: sb.inv,
@@ -761,7 +761,9 @@ export async function seedOptionalDemoData(actor: { _id: string; name: string; r
       type: 'low_stock',
       title: `Low Stock: ${lowProd.name}`,
       message: `${lowProd.name} (SKU ${lowProd.sku}) has ${lowProd.stockQuantity} units remaining (alert threshold: ${lowProd.minStockAlert}).`,
-      relatedId: lowProd._id,
+      severity: 'warning',
+      entityId: lowProd._id,
+      linkView: 'inventory',
       isRead: false,
     });
   }

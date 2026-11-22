@@ -17,6 +17,7 @@ import { InvoiceModal } from '../components/InvoiceModal';
 import {
   Button,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   ProductImage,
@@ -52,6 +53,7 @@ export function PosTerminalView() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [heldCarts, setHeldCarts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -87,6 +89,7 @@ export function PosTerminalView() {
 
   const loadPosData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [prodRes, catRes, custRes, heldRes] = await Promise.all([
         apiRequest<{ rows: any[] }>('/api/products?status=active&limit=500'),
@@ -98,16 +101,18 @@ export function PosTerminalView() {
       setCategories(catRes.filter((c) => c.status === 'active'));
       setCustomers(custRes);
       setHeldCarts(heldRes);
-      if (!selectedCustomerId && custRes.length > 0) {
+      if (custRes.length > 0) {
         const walkIn = custRes.find((c) => c.isWalkIn) || custRes[0];
-        setSelectedCustomerId(walkIn._id);
+        setSelectedCustomerId((prev) => prev || walkIn._id);
       }
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load POS catalog');
+      const msg = err.message || 'Failed to load POS catalog';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
-  }, [selectedCustomerId]);
+  }, []);
 
   useEffect(() => {
     loadPosData();
@@ -485,6 +490,8 @@ export function PosTerminalView() {
               <div key={i} className="h-44 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 animate-pulse" />
             ))}
           </div>
+        ) : loadError ? (
+          <ErrorState title="Failed to load POS catalog" message={loadError} onRetry={loadPosData} />
         ) : filteredProducts.length === 0 ? (
           <EmptyState
             title={products.length === 0 ? 'No products in catalog yet' : 'No matching products'}
@@ -911,8 +918,13 @@ export function PosTerminalView() {
                     size="sm"
                     variant="ghost"
                     onClick={async () => {
-                      await apiRequest(`/api/pos/held-carts/${h._id}`, { method: 'DELETE' });
-                      loadPosData();
+                      try {
+                        await apiRequest(`/api/pos/held-carts/${h._id}`, { method: 'DELETE' });
+                        toast.success('Held cart deleted');
+                        await loadPosData();
+                      } catch (err: any) {
+                        toast.error(err.message || 'Could not delete held cart');
+                      }
                     }}
                   >
                     <Trash2 className="w-3.5 h-3.5 text-red-600" />

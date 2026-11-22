@@ -6,6 +6,7 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   Select,
@@ -23,6 +24,7 @@ export function SuppliersView() {
 
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -45,11 +47,14 @@ export function SuppliersView() {
 
   const loadSuppliers = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await apiRequest<any[]>(`/api/suppliers?search=${encodeURIComponent(search)}`);
       setSuppliers(res);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load suppliers');
+      const msg = err.message || 'Failed to load suppliers';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -152,6 +157,8 @@ export function SuppliersView() {
 
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
+      ) : loadError ? (
+        <ErrorState title="Failed to load suppliers" message={loadError} onRetry={loadSuppliers} />
       ) : suppliers.length === 0 ? (
         <EmptyState
           title="No suppliers registered"
@@ -196,8 +203,12 @@ export function SuppliersView() {
                         variant="ghost"
                         size="sm"
                         onClick={async () => {
-                          const data = await apiRequest(`/api/suppliers/${s._id}/ledger`);
-                          setLedgerData(data);
+                          try {
+                            const data = await apiRequest(`/api/suppliers/${s._id}/ledger`);
+                            setLedgerData(data);
+                          } catch (err: any) {
+                            toast.error(err.message || 'Could not load supplier ledger');
+                          }
                         }}
                       >
                         <FileText className="w-3.5 h-3.5" /> Ledger
@@ -331,10 +342,14 @@ export function SuppliersView() {
         open={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
         onConfirm={async () => {
-          await apiRequest(`/api/suppliers/${deleteTarget._id}`, { method: 'DELETE' });
-          toast.success('Supplier deleted');
-          setDeleteTarget(null);
-          await loadSuppliers();
+          try {
+            await apiRequest(`/api/suppliers/${deleteTarget._id}`, { method: 'DELETE' });
+            toast.success('Supplier deleted');
+            setDeleteTarget(null);
+            await loadSuppliers();
+          } catch (err: any) {
+            toast.error(err.message || 'Delete failed');
+          }
         }}
         title="Delete Supplier"
         message={`Remove "${deleteTarget?.name}" from active suppliers?`}

@@ -363,6 +363,54 @@ describe('LedgerPOS Core Logic & Integration Tests', () => {
     const reportRes = await req('/api/reports/profit_report?preset=all', { cookie: adminCookie });
     assert.equal(reportRes.status, 200);
     assert.ok(reportRes.data.data.length > 0);
+
+    // 9. Verify tax_report returns actual sales rows after fix
+    const taxReportRes = await req('/api/reports/tax_report?preset=all', { cookie: adminCookie });
+    assert.equal(taxReportRes.status, 200);
+    assert.ok(Array.isArray(taxReportRes.data.data) && taxReportRes.data.data.length >= 1);
+    assert.equal(taxReportRes.data.data[0].taxAmount, 3);
+
+    // 10. Verify invalid IDs return 404 rather than 500
+    const badExpCatDel = await req('/api/expense-categories/nonexistent-id', {
+      method: 'DELETE',
+      cookie: adminCookie,
+    });
+    assert.equal(badExpCatDel.status, 404);
+
+    // 11. Verify /api/notifications/read-all precedes /:id/read and works cleanly
+    const readAllRes = await req('/api/notifications/read-all', {
+      method: 'PUT',
+      cookie: adminCookie,
+    });
+    assert.equal(readAllRes.status, 200);
+
+    const badNotifRead = await req('/api/notifications/nonexistent-id/read', {
+      method: 'PUT',
+      cookie: adminCookie,
+    });
+    assert.equal(badNotifRead.status, 404);
+
+    // 12. Verify invalid login fails with 401 and public endpoints return 200 JSON
+    const badLogin = await req('/api/auth/login', {
+      method: 'POST',
+      body: { email: 'owner@teststore.com', password: 'WrongPassword!' },
+    });
+    assert.equal(badLogin.status, 401);
+
+    const healthRes = await req('/api/health');
+    assert.equal(healthRes.status, 200);
+    assert.equal(healthRes.data.status, 'ok');
+
+    const statusRes = await req('/api/auth/status');
+    assert.equal(statusRes.status, 200);
+    assert.equal(statusRes.data.data.initialized, true);
+
+    const pubSettingsRes = await req('/api/settings/public');
+    assert.equal(pubSettingsRes.status, 200);
+    assert.equal(pubSettingsRes.data.data.businessName, 'Test Store');
+
+    const notFoundRes = await req('/api/nonexistent-route');
+    assert.equal(notFoundRes.status, 404);
   });
 
   it('supports in-memory Bearer token authentication and sample data seeding for live dashboard', async () => {
@@ -408,6 +456,18 @@ describe('LedgerPOS Core Logic & Integration Tests', () => {
       assert.ok(dashJson.data.charts.salesByCategory.length > 0);
       assert.ok(dashJson.data.charts.paymentBreakdown.length > 0);
       assert.ok(dashJson.data.topSellingProducts.length > 0);
+
+      // Verify notifications seeded properly (including low_stock entityId & read-all)
+      const notifRes = await fetch(`${url}/api/notifications`, {
+        headers: {
+          Authorization: `Bearer ${setupJson.data.token}`,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+      const notifJson = await notifRes.json();
+      assert.equal(notifRes.status, 200);
+      assert.ok(notifJson.data.items.length >= 1);
+      assert.ok(notifJson.data.unreadCount >= 1);
     } finally {
       if (seedServer) {
         await new Promise<void>((resolve) => seedServer!.close(() => resolve()));

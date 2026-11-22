@@ -7,6 +7,7 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   Input,
   Modal,
   Select,
@@ -25,6 +26,7 @@ export function ExpensesView() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
 
@@ -46,6 +48,7 @@ export function ExpensesView() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const qs = new URLSearchParams({ search, categoryId: categoryFilter });
       const [expRes, catRes] = await Promise.all([
@@ -55,7 +58,9 @@ export function ExpensesView() {
       setExpenses(expRes);
       setCategories(catRes);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load expenses');
+      const msg = err.message || 'Failed to load expenses';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -198,6 +203,8 @@ export function ExpensesView() {
 
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
+      ) : loadError ? (
+        <ErrorState title="Failed to load expenses" message={loadError} onRetry={loadAll} />
       ) : expenses.length === 0 ? (
         <EmptyState
           title="No expenses recorded"
@@ -308,10 +315,14 @@ export function ExpensesView() {
         open={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
         onConfirm={async () => {
-          await apiRequest(`/api/expenses/${deleteTarget._id}`, { method: 'DELETE' });
-          toast.success('Expense deleted');
-          setDeleteTarget(null);
-          await loadAll();
+          try {
+            await apiRequest(`/api/expenses/${deleteTarget._id}`, { method: 'DELETE' });
+            toast.success('Expense deleted');
+            setDeleteTarget(null);
+            await loadAll();
+          } catch (err: any) {
+            toast.error(err.message || 'Delete failed');
+          }
         }}
         title="Delete Expense"
         message={`Delete expense "${deleteTarget?.title}"?`}

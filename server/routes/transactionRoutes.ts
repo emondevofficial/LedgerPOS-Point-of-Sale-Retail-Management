@@ -270,11 +270,15 @@ router.post('/expense-categories', requireAuth, requirePermission('expenses:mana
 
 router.delete('/expense-categories/:id', requireAuth, requirePermission('expenses:manage'), async (req, res, next) => {
   try {
-    const linked = await db.expenses.count({ categoryId: req.params.id, deletedAt: null });
+    const existing = await db.expenseCategories.findById(req.params.id);
+    if (!existing || existing.deletedAt) {
+      return res.status(404).json({ success: false, error: 'Expense category not found' });
+    }
+    const linked = await db.expenses.count({ categoryId: existing._id, deletedAt: null });
     if (linked > 0) {
       return res.status(400).json({ success: false, error: 'Category has linked expenses and cannot be deleted' });
     }
-    await db.expenseCategories.updateById(req.params.id, { $set: { deletedAt: new Date().toISOString() } });
+    await db.expenseCategories.updateById(existing._id, { $set: { deletedAt: new Date().toISOString() } });
     res.json({ success: true, message: 'Expense category deleted' });
   } catch (err) {
     next(err);

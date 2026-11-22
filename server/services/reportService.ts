@@ -659,7 +659,7 @@ export async function generateReport(
     }
 
     case 'tax_report': {
-      const sales = (await db.sales.find({ sort: { saleDate: -1 } })).filter(
+      const sales = (await db.sales.find({}, { sort: { saleDate: -1 } })).filter(
         (s) => s.status !== 'canceled' && inRange(s.saleDate, range)
       );
       return sales.map((s) => ({
